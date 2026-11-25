@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cmath>
+#include <string_view>
 
 #include "SteamEquipment.h"
 
@@ -19,7 +20,9 @@ struct Color {
     float b;
 };
 
-constexpr Color kGround{0.50f, 0.49f, 0.37f};
+constexpr Color kGround{0.40f, 0.51f, 0.28f};
+constexpr Color kReserve{0.49f, 0.57f, 0.34f};
+constexpr Color kRoof{0.22f, 0.41f, 0.50f};
 constexpr Color kGravel{0.56f, 0.51f, 0.39f};
 constexpr Color kPlanting{0.37f, 0.46f, 0.30f};
 constexpr Color kGrassLight{0.47f, 0.54f, 0.31f};
@@ -36,10 +39,6 @@ constexpr Color kPanelLight{0.18f, 0.37f, 0.57f};
 constexpr Color kConduit{0.77f, 0.37f, 0.13f};
 
 constexpr float kEntryDepth = 13.0f;
-constexpr float kFrontCourtDepth = 27.0f;
-constexpr float kRearCourtDepth = 22.0f;
-constexpr float kFirstRackDepth = 15.0f;
-constexpr float kRackSpacing = 9.0f;
 constexpr float kPanelHeight = 1.55f;
 constexpr float kPanelThickness = 0.14f;
 constexpr float kPanelHalfDepth = 1.5f;
@@ -47,7 +46,7 @@ constexpr float kTilt = 30.0f;
 constexpr float kSquareEdge = 2.0f;
 constexpr int kPanelColumns = 6;
 constexpr int kPanelRows = 4;
-constexpr int kRackRows = 5;
+constexpr int kRackRows = 4;
 constexpr int kRackColumns = 5;
 constexpr float kPostHeight = 5.1f;
 constexpr float kFrontPathWidth = 5.0f;
@@ -55,28 +54,31 @@ constexpr float kFrontPathWidth = 5.0f;
 struct Site {
     explicit Site(const PlotInfo& plot)
         : halfWidth(plot.width / 2.0f), halfDepth(plot.depth / 2.0f),
-          control{-0.59f * halfWidth, 0.0f, halfDepth - kFrontCourtDepth},
-          inverter{0.61f * halfWidth, 0.0f, halfDepth - kFrontCourtDepth - 4.0f},
-          workshop{-0.59f * halfWidth, 0.0f, -halfDepth + kRearCourtDepth},
+          control{-0.39f * halfWidth, 0.0f, 0.51f * halfDepth},
+          inverter{-0.19f * halfWidth, 0.0f, -0.09f * halfDepth},
+          workshop{0.39f * halfWidth, 0.0f, 0.51f * halfDepth},
+          transformer{0.19f * halfWidth, 0.0f, -0.09f * halfDepth},
           canopy{0.0f, 0.0f, halfDepth - kEntryDepth} {}
 
-    glm::vec3 panel(int column, int row) const {
-        return {halfWidth * (0.20f + 0.16f * column), kPanelHeight,
-                -halfDepth + kFirstRackDepth + kRackSpacing * row};
+    glm::vec3 panel(int bank, int column, int row) const {
+        return {bank * halfWidth * (0.4175f + 0.1175f * column), kPanelHeight,
+                halfDepth * (0.11f - 0.13f * row)};
     }
 
-    float rowCableZ(int row) const { return panel(0, row).z - 2.8f; }
+    float rowCableZ(int row) const { return panel(1, 0, row).z - 2.15f; }
 
-    glm::vec3 fieldCabinet(int index) const {
-        const float z = index == kRackRows ? panel(0, kRackRows - 1).z + 4.0f : rowCableZ(index);
-        return {halfWidth * 0.60f, 0.0f, z};
+    glm::vec3 fieldCabinet(int bank, int row) const {
+        return {bank * halfWidth * 0.345f, 0.0f, rowCableZ(row)};
     }
+
+    glm::vec3 booth() const { return {7.25f, 0.0f, halfDepth - 3.9f}; }
 
     float halfWidth;
     float halfDepth;
     glm::vec3 control;
     glm::vec3 inverter;
     glm::vec3 workshop;
+    glm::vec3 transformer;
     glm::vec3 canopy;
 };
 
@@ -156,7 +158,7 @@ void pitchedRoof(float width, float depth, float rise) {
     const float z = depth / 2.0f;
     constexpr float backHeight = 0.20f;
     const float frontHeight = backHeight + rise;
-    color(kSteel);
+    color(kRoof);
     glNormal3f(0.0f, 1.0f, 0.0f);
     glBegin(GL_QUADS);
     // Top and bottom.
@@ -247,75 +249,75 @@ void tree(float x, float z, float scale) {
         move(crown);
         glScalef(1.16f, 0.55f, 0.88f);
         color(crown.x < 0.0f ? kGrassLight : kPlanting);
-        shapes::sphere(0.93f, 8, 5);
+        shapes::sphere(0.93f, 7, 4);
         glPopMatrix();
     }
     glPopMatrix();
 }
 
-void drawGrounds(const Site& site, const PlotInfo& plot) {
+void dashLine(float x1, float z1, float x2, float z2) {
+    const float length = std::hypot(x2 - x1, z2 - z1);
+    const int count = static_cast<int>(std::ceil(length / 1.7f));
+    for (int i = 0; i < count; ++i) {
+        const float a = static_cast<float>(i) / count;
+        const float b = (i + 0.67f) / count;
+        const float xa = glm::mix(x1, x2, a);
+        const float za = glm::mix(z1, z2, a);
+        const float xb = glm::mix(x1, x2, b);
+        const float zb = glm::mix(z1, z2, b);
+        ground(kIvory, (xa + xb) / 2.0f, (za + zb) / 2.0f,
+               std::abs(xb - xa) + 0.10f, std::abs(zb - za) + 0.10f, 0.048f);
+    }
+}
+
+void reserve(float x, float z, float width, float depth) {
+    ground(kReserve, x, z, width, depth, 0.020f);
+    const float left = x - width / 2.0f;
+    const float right = x + width / 2.0f;
+    const float back = z - depth / 2.0f;
+    const float front = z + depth / 2.0f;
+    dashLine(left, back, right, back);
+    dashLine(left, front, right, front);
+    dashLine(left, back, left, front);
+    dashLine(right, back, right, front);
+}
+
+void drawGrounds(const Site& site) {
     const float w = site.halfWidth;
     const float d = site.halfDepth;
     ground(kGround, 0.0f, 0.0f, 2.0f * w, 2.0f * d, 0.004f);
-    // Four edge-to-edge landscape bands, plus the raised visual layer of paths.
-    ground(kGravel, 0.0f, -0.64f * d, 2.0f * w, 0.72f * d, 0.012f);
-    ground(kPlanting, 0.0f, -0.10f * d, 2.0f * w, 0.36f * d, 0.012f);
-    ground(kGravel, 0.0f, 0.42f * d, 2.0f * w, 0.68f * d, 0.012f);
-    ground(kPlanting, 0.0f, 0.88f * d, 2.0f * w, 0.24f * d, 0.012f);
-
     for (int side : {-1, 1}) {
-        const float x = side * w;
-        ground(kPlanting, 0.94f * x, 0.0f, 0.08f * w, 1.91f * d, 0.020f);
-        ground(kDarkPaving, 0.62f * x, 0.42f * d, 0.61f * w, 0.42f * d, 0.022f);
-        ground(kGrassLight, 0.34f * x, 0.79f * d, 0.30f * w, 0.14f * d, 0.022f);
-        ground(kGravel, 0.65f * x, 0.82f * d, 0.29f * w, 0.17f * d, 0.024f);
-        for (int i = 0; i < 5; ++i) {
-            const float z = (-0.82f + 0.40f * i) * d;
-            tree(0.91f * x, z, 0.88f + 0.09f * ((i + (side == 1)) % 3));
+        const float fieldX = side * 0.64f * w;
+        ground(kGravel, fieldX, -0.105f * d, 0.63f * w, 0.54f * d, 0.012f);
+        for (int row = 0; row < kRackRows; ++row) {
+            ground(kDarkPaving, fieldX, site.panel(side, 0, row).z, 0.59f * w, 4.0f, 0.026f);
         }
-        for (int i = 0; i < 3; ++i) {
-            const float z = (0.33f + 0.19f * i) * d;
-            bollard(side * 3.15f, z, 0.80f + 0.14f * (i % 2));
-        }
-        tree(0.35f * x, 0.82f * d, 0.85f);
+        ground(kPlanting, side * 0.969f * w, 0.0f, 0.043f * w, 1.94f * d, 0.018f);
+        reserve(side * 0.572f * w, -0.715f * d, 0.72f * w, 0.29f * d);
+        reserve(side * 0.855f * w, 0.537f * d, 0.225f * w, 0.30f * d);
+
+        const float loopX = side * 0.72f * w;
+        path(kPaving, loopX, 0.23f * d, loopX, 0.80f * d, 2.8f);
+        path(kPaving, 0.0f, 0.80f * d, loopX, 0.80f * d, 2.9f);
+        path(kPaving, 0.0f, 0.23f * d, side * 0.95f * w, 0.23f * d, 3.2f);
+        tree(side * 0.32f * w, 0.755f * d, 1.0f);
+        tree(side * 0.61f * w, 0.73f * d, 0.89f);
+        tree(side * 0.94f * w, 0.88f * d, 1.0f);
+        tree(side * 0.94f * w, -0.45f * d, 1.0f);
+        tree(side * 0.29f * w, -0.45f * d, 0.92f);
+        tree(side * 0.76f * w, -0.92f * d, 0.91f);
+        tree(side * 0.35f * w, -0.92f * d, 0.87f);
     }
 
-    ground(kDarkPaving, site.workshop.x + 1.0f, site.workshop.z + 2.0f,
-           0.71f * w, 21.0f, 0.022f);
-    const float arrayX = (site.panel(0, 0).x + site.panel(4, 0).x) / 2.0f;
-    for (int row = 0; row < kRackRows; ++row) {
-        const float z = site.panel(0, row).z;
-        ground(kDarkPaving, arrayX, z, site.panel(4, 0).x - site.panel(0, 0).x + 6.0f,
-               5.1f, 0.026f);
-    }
-    for (int i = 1; i < 5; ++i) {
-        const float x = site.workshop.x + (i - 2.5f) * 4.0f;
-        ground(kAmber, x, site.workshop.z + 8.3f, 0.115f, 3.4f, 0.029f);
-    }
-
-    const float rearLanding = site.workshop.z + 9.1f;
-    const float visitorCourt = site.control.z + 8.65f;
-    path(kPaving, 0.0f, rearLanding, 0.0f, d, kFrontPathWidth);
-    path(kPaving, site.workshop.x, rearLanding, 0.0f, rearLanding, 3.3f);
-    path(kPaving, site.control.x, visitorCourt, site.inverter.x, visitorCourt, 3.1f);
-    path(kPaving, site.inverter.x, visitorCourt, site.inverter.x, site.inverter.z + 6.0f, 3.1f);
-    path(kPaving, 0.0f, 2.0f, site.panel(4, 0).x + 2.3f, 2.0f, 2.4f);
-    for (float z : {-0.33f * d, 0.18f * d}) {
-        path(kPaving, 0.0f, z, steam::visitorEdgeX(plot), z, 2.8f);
-    }
-    for (int i = 0; i < 10; ++i) {
-        const float z = d - 3.5f - i * 2.5f;
-        ground(kIvory, -2.20f, z, 0.14f, 0.62f, 0.043f);
-        ground(kIvory, 2.20f, z, 0.14f, 0.62f, 0.043f);
-    }
-
-    // Break up the rear perimeter with alternating plant beds and maintenance pads.
-    for (int i = 0; i < 7; ++i) {
-        const float x = (i - 3) * w * 0.24f;
-        ground(i % 2 == 0 ? kPlanting : kGrassLight,
-               x, -0.91f * d, 0.20f * w, 0.10f * d, 0.022f);
-        if (i % 2 == 0) tree(x, -0.91f * d, 0.80f);
-    }
+    reserve(0.0f, -0.755f * d, 0.32f * w, 0.21f * d);
+    ground(kGravel, 0.0f, site.canopy.z, 15.0f, 7.0f, 0.019f);
+    ground(kDarkPaving, site.control.x, site.control.z, 21.0f, 16.8f, 0.022f);
+    ground(kDarkPaving, site.workshop.x, site.workshop.z, 21.0f, 16.8f, 0.022f);
+    ground(kPaving, 0.0f, site.inverter.z, 0.645f * w, 0.265f * d, 0.022f);
+    path(kPaving, 0.0f, -0.26f * d, 0.0f, d, kFrontPathWidth);
+    path(kPaving, site.control.x - 1.3f, site.control.z + 7.8f, site.control.x - 1.3f, 0.80f * d, 3.3f);
+    path(kPaving, site.workshop.x, site.workshop.z + 6.7f, site.workshop.x, 0.80f * d, 4.3f);
+    for (float x : {-3.0f, 3.0f}) bollard(x, d - 2.65f, 0.90f);
 }
 
 void controlFloor(int level) {
@@ -356,6 +358,7 @@ void drawControlBuilding(glm::vec3 position) {
     box(kAmber, {-1.3f, 3.17f, 7.37f}, {4.3f, 0.25f, 1.7f});
     box(kSteel, {-3.4f, 1.75f, 7.90f}, {0.19f, 2.85f, 0.19f});
     box(kSteel, {0.8f, 1.75f, 7.90f}, {0.19f, 2.85f, 0.19f});
+    box(kRoof, {0.0f, 8.24f, 0.0f}, {19.4f, 0.19f, 14.0f});
     box(kTeal, {4.5f, 8.38f, -2.4f}, {5.8f, 0.39f, 5.5f});
     box(kSteel, {4.5f, 9.15f, -2.4f}, {0.17f, 1.55f, 0.17f});
     box(kAmber, {4.5f, 9.94f, -2.4f}, {0.27f, 0.22f, 0.27f});
@@ -365,6 +368,7 @@ void drawControlBuilding(glm::vec3 position) {
 void drawInverterHall(glm::vec3 position) {
     glPushMatrix();
     move(position);
+    glScalef(0.56f, 0.86f, 0.73f);
     box(kSteel, {0.0f, 0.16f, 0.0f}, {19.6f, 0.32f, 13.1f});
     box(kIvory, {0.0f, 2.54f, 0.0f}, {17.5f, 4.8f, 11.4f});
     box(kTeal, {0.0f, 4.47f, 5.78f}, {17.7f, 0.45f, 0.27f});
@@ -388,7 +392,8 @@ void openWorkshopDoor() {
     constexpr float halfWidth = 1.32f;
     constexpr float doorAngle = -34.0f;
     glPushMatrix();
-    move({-3.82f, 1.95f, 6.73f});
+    move({-9.68f, 1.95f, 1.5f});
+    glRotatef(-90.0f, 0.0f, 1.0f, 0.0f);
     glTranslatef(-halfWidth, 0.0f, 0.0f);  // T(p)
     glRotatef(doorAngle, 0.0f, 1.0f, 0.0f);  // R
     glTranslatef(halfWidth, 0.0f, 0.0f);  // T(-p)
@@ -402,13 +407,20 @@ void drawWorkshop(glm::vec3 position) {
     move(position);
     box(kSteel, {0.0f, 0.15f, 0.0f}, {20.1f, 0.30f, 14.5f});
     box(kIvory, {0.0f, 2.39f, 0.0f}, {19.0f, 4.55f, 13.0f});
-    box(kInk, {-2.52f, 1.93f, 6.53f}, {5.33f, 3.46f, 0.12f});
-    box(kSteel, {-1.19f, 1.93f, 6.65f}, {2.49f, 3.36f, 0.15f});
+    box(kInk, {0.0f, 1.94f, 6.53f}, {6.0f, 3.55f, 0.12f});
+    box(kSteel, {0.0f, 1.94f, 6.64f}, {5.63f, 3.31f, 0.14f});
     box(kTeal, {0.0f, 4.43f, 6.57f}, {19.1f, 0.34f, 0.20f});
+    for (int slat = 0; slat < 8; ++slat) {
+        box(kInk, {0.0f, 0.58f + 0.36f * slat, 6.73f}, {5.58f, 0.039f, 0.05f});
+    }
+    for (float x : {-3.15f, 3.15f}) {
+        box(kAmber, {x, 1.96f, 6.69f}, {0.24f, 3.57f, 0.29f});
+    }
+    box(kInk, {-9.51f, 1.95f, 1.5f}, {0.19f, 3.46f, 2.75f});
     openWorkshopDoor();
-    for (int i = 0; i < 3; ++i) {
-        box(kGlass, {2.0f + 2.65f * i, 2.66f, 6.59f}, {2.12f, 1.52f, 0.19f});
-        box(kSteel, {2.0f + 2.65f * i, 1.84f, 6.64f}, {2.27f, 0.12f, 0.31f});
+    for (float x : {-6.05f, 6.05f}) {
+        box(kGlass, {x, 2.57f, 6.59f}, {2.55f, 1.32f, 0.19f});
+        box(kSteel, {x, 1.86f, 6.64f}, {2.68f, 0.12f, 0.31f});
     }
     glPushMatrix();
     move({0.0f, 4.66f, 0.0f});
@@ -443,27 +455,19 @@ void drawPanelRack(glm::vec3 origin, float yaw, float widthScale) {
 }
 
 void drawSolarField(const Site& site) {
-    for (int row = 0; row < kRackRows; ++row) {
-        for (int column = 0; column < kRackColumns; ++column) {
-            const float yaw = column == kRackColumns - 1 ? 8.0f : 0.0f;
-            const float widthScale = row == kRackRows - 1 ? 0.90f : 1.0f;
-            drawPanelRack(site.panel(column, row), yaw, widthScale);
-        }
-    }
-    for (int i = 0; i <= kRackRows; ++i) {
-        glPushMatrix();
-        move(site.fieldCabinet(i));
-        glRotatef(i % 2 == 0 ? 90.0f : -90.0f, 0.0f, 1.0f, 0.0f);
-        glScalef(1.0f, i % 2 == 0 ? 1.0f : 1.1f, 1.0f);
-        switchgear();
-        glPopMatrix();
-    }
-    // Six demonstration panels in the garden west of the visitor route.
-    for (int row = 0; row < 3; ++row) {
-        for (int column = 0; column < 2; ++column) {
-            drawPanelRack({-site.halfWidth * (0.24f + 0.16f * column),
-                           kPanelHeight, -10.5f + 7.4f * row},
-                          column == 0 ? -12.0f : 12.0f, 0.89f);
+    for (int bank : {-1, 1}) {
+        for (int row = 0; row < kRackRows; ++row) {
+            for (int column = 0; column < kRackColumns; ++column) {
+                const float yaw = column == kRackColumns - 1 ? bank * 5.0f : 0.0f;
+                const float widthScale = row == kRackRows - 1 ? 0.93f : 1.0f;
+                drawPanelRack(site.panel(bank, column, row), yaw, widthScale);
+            }
+            glPushMatrix();
+            move(site.fieldCabinet(bank, row));
+            glRotatef(bank * 90.0f, 0.0f, 1.0f, 0.0f);
+            glScalef(0.74f, row % 2 == 0 ? 0.75f : 0.82f, 0.75f);
+            switchgear();
+            glPopMatrix();
         }
     }
 }
@@ -494,6 +498,136 @@ void drawEntryCanopy(glm::vec3 position) {
     glPopMatrix();
 }
 
+void drawTransformerPad(glm::vec3 position) {
+    glPushMatrix();
+    move(position);
+    box(kSteel, {0.0f, 0.16f, 0.0f}, {11.6f, 0.32f, 9.4f});
+    box(kPaving, {0.0f, 0.34f, 0.0f}, {10.7f, 0.16f, 8.5f});
+    box(kInk, {-2.70f, 0.62f, 0.0f}, {4.7f, 0.38f, 4.35f});
+    box(kTeal, {-2.70f, 2.0f, 0.0f}, {3.9f, 2.6f, 3.7f});
+    for (int fin = 0; fin < 9; ++fin) {
+        box(kRoof, {-4.40f + fin * 0.42f, 2.06f, 1.94f}, {0.17f, 2.38f, 0.43f});
+    }
+    box(kGlass, {-2.70f, 3.34f, 0.0f}, {4.11f, 0.21f, 3.96f});
+    for (float x : {-3.8f, -2.7f, -1.6f}) {
+        box(kIvory, {x, 3.73f, -0.5f}, {0.28f, 0.72f, 0.28f});
+        box(kAmber, {x, 4.10f, -0.5f}, {0.36f, 0.15f, 0.36f});
+    }
+    for (int i = 0; i < 3; ++i) {
+        glPushMatrix();
+        move({0.60f + i * 1.71f, 0.42f, 0.0f});
+        glScalef(0.92f, 1.43f, 1.86f);
+        switchgear();
+        glPopMatrix();
+    }
+    glPopMatrix();
+}
+
+void drawVisitorFurniture(const Site& site) {
+    for (float x : {-4.1f, 4.1f}) {
+        glPushMatrix();
+        move(site.canopy + glm::vec3(x, 0.023f, -1.95f));
+        citylab::props::bench();
+        glPopMatrix();
+    }
+    const auto kiosk = site.canopy + glm::vec3(-3.9f, 0.0f, 1.25f);
+    box(kSteel, kiosk + glm::vec3(0.0f, 0.65f, 0.0f), {0.25f, 1.30f, 0.28f});
+    box(kTeal, kiosk + glm::vec3(0.0f, 1.38f, 0.0f), {0.86f, 0.62f, 0.17f});
+    box(kIvory, kiosk + glm::vec3(0.0f, 1.42f, 0.10f), {0.105f, 0.32f, 0.03f});
+}
+
+void drawSecurity(const Site& site) {
+    const glm::vec3 booth = site.booth();
+    box(kSteel, booth + glm::vec3(0.0f, 0.13f, 0.0f), {3.5f, 0.26f, 3.55f});
+    box(kIvory, booth + glm::vec3(0.0f, 1.45f, 0.0f), {2.9f, 2.4f, 2.9f});
+    box(kGlass, booth + glm::vec3(0.0f, 1.65f, 1.47f), {1.98f, 1.0f, 0.11f});
+    box(kGlass, booth + glm::vec3(-1.47f, 1.65f, 0.0f), {0.11f, 0.92f, 1.96f});
+    box(kRoof, booth + glm::vec3(0.0f, 2.71f, 0.0f), {3.4f, 0.25f, 3.45f});
+    const float z = site.halfDepth - 3.2f;
+    box(kSteel, {-4.05f, 0.52f, z}, {0.57f, 1.04f, 0.66f});
+    // Park the striped arm upright so the visitor route stays open.
+    box(kIvory, {-4.05f, 2.33f, z}, {0.135f, 3.12f, 0.15f});
+    for (int band = 0; band < 5; ++band) {
+        box({0.78f, 0.16f, 0.10f}, {-4.05f, 1.02f + 0.61f * band, z}, {0.149f, 0.27f, 0.164f});
+    }
+}
+
+// Rows of a 3-by-5 block alphabet, encoded as three-bit masks.
+constexpr std::array<std::string_view, 26> kLetters{{
+    "25755", "65656", "34443", "65556", "74647", "74644", "34553",
+    "55755", "72227", "11152", "55655", "44447", "57755", "57775",
+    "25552", "65644", "25573", "65655", "34216", "72222", "55557",
+    "55552", "55775", "55255", "55222", "71247",
+}};
+
+std::string_view glyph(char letter) {
+    if (letter >= 'A' && letter <= 'Z') return kLetters[letter - 'A'];
+    if (letter == '1') return "26227";
+    if (letter == '-') return "00700";
+    return "00000";
+}
+
+void lettering(std::string_view label, float cell) {
+    const float width = (label.size() * 4 - 1) * cell;
+    color(kInk);
+    glNormal3f(0.0f, 0.0f, 1.0f);
+    glBegin(GL_QUADS);
+    for (std::size_t index = 0; index < label.size(); ++index) {
+        const auto rows = glyph(label[index]);
+        for (int row = 0; row < 5; ++row) {
+            for (int column = 0; column < 3; ++column) {
+                if (((rows[row] - '0') & (4 >> column)) == 0) continue;
+                const float x = (4 * index + column) * cell - width / 2.0f;
+                const float y = (2 - row) * cell;
+                glVertex3f(x, y, 0.0f);
+                glVertex3f(x + cell, y, 0.0f);
+                glVertex3f(x + cell, y + cell, 0.0f);
+                glVertex3f(x, y + cell, 0.0f);
+            }
+        }
+    }
+    glEnd();
+}
+
+void placard(glm::vec3 position, std::string_view label, float cell) {
+    glPushMatrix();
+    move(position);
+    box(kIvory, {}, {(label.size() * 4 + 4) * cell, 8.0f * cell, 0.13f});
+    move({0.0f, -0.5f * cell, 0.071f});
+    lettering(label, cell);
+    glPopMatrix();
+}
+
+void groundLabel(glm::vec3 position, std::string_view label, float cell) {
+    glPushMatrix();
+    move(position);
+    glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
+    lettering(label, cell);
+    glPopMatrix();
+}
+
+void drawWayfinding(const Site& site) {
+    placard(site.control + glm::vec3(0.0f, 7.8f, 7.04f), "CONTROL OFFICE", 0.21f);
+    placard(site.workshop + glm::vec3(0.0f, 5.03f, 7.02f), "MAINTENANCE", 0.22f);
+    placard(site.inverter + glm::vec3(0.0f, 4.05f, 4.59f), "INVERTER ROOM", 0.15f);
+    placard(site.transformer + glm::vec3(0.0f, 1.25f, 4.42f), "TRANSFORMER PAD", 0.15f);
+    placard(site.canopy + glm::vec3(0.0f, 5.11f, 2.75f), "SOLAR VISITOR CANOPY", 0.10f);
+
+    const float w = site.halfWidth;
+    const float d = site.halfDepth;
+    for (int bank : {-1, 1}) {
+        const float x = bank * 0.64f * w;
+        for (float dx : {-2.7f, 2.7f}) {
+            box(kSteel, {x + dx, 0.46f, 0.167f * d}, {0.09f, 0.92f, 0.10f});
+        }
+        placard({x, 0.83f, 0.167f * d}, bank < 0 ? "PV FIELD A" : "PV FIELD B", 0.19f);
+        groundLabel({bank * 0.572f * w, 0.052f, -0.715f * d}, "PV EXPANSION AREA", 0.27f);
+        groundLabel({bank * 0.855f * w, 0.052f, 0.56f * d}, "PV RESERVE", 0.18f);
+    }
+    groundLabel({0.0f, 0.052f, -0.735f * d}, "TECHNICAL", 0.26f);
+    groundLabel({0.0f, 0.052f, -0.785f * d}, "EXPANSION", 0.26f);
+}
+
 // Cable-tray covers sit almost flush where the route crosses visitor paths.
 void cableRun(glm::vec3 start, glm::vec3 end, float width) {
     const auto delta = end - start;
@@ -506,34 +640,30 @@ void cableRun(glm::vec3 start, glm::vec3 end, float width) {
 }
 
 void drawPowerLinks(const Site& site, const PlotInfo& plot) {
-    const float firstX = site.panel(0, 0).x;
-    const float lastX = site.panel(kRackColumns - 1, 0).x;
-    const float trunkX = site.fieldCabinet(0).x;
-    const float busZ = site.inverter.z - 7.15f;
-    constexpr float groundY = 0.078f;
-    for (int row = 0; row < kRackRows; ++row) {
-        const float rowZ = site.rowCableZ(row);
-        cableRun({firstX, groundY, rowZ}, {lastX, groundY, rowZ}, 0.19f);
-        for (int column = 0; column < kRackColumns; ++column) {
-            const auto rack = site.panel(column, row);
-            cableRun({rack.x, groundY, rack.z - 0.80f}, {rack.x, groundY, rowZ}, 0.12f);
-            box(kInk, {rack.x, 0.14f, rack.z - 0.80f}, {0.43f, 0.26f, 0.34f});
+    constexpr float y = 0.078f;
+    const float busZ = site.inverter.z - 0.9f;
+    const float transformerX = site.transformer.x;
+    for (int bank : {-1, 1}) {
+        const float trunkX = site.fieldCabinet(bank, 0).x;
+        for (int row = 0; row < kRackRows; ++row) {
+            const float rowZ = site.rowCableZ(row);
+            const float outerX = site.panel(bank, kRackColumns - 1, row).x;
+            cableRun({trunkX, y, rowZ}, {outerX, y, rowZ}, 0.19f);
+            for (int column = 0; column < kRackColumns; ++column) {
+                const auto rack = site.panel(bank, column, row);
+                cableRun({rack.x, y, rack.z - 0.80f}, {rack.x, y, rowZ}, 0.12f);
+            }
         }
+        cableRun({trunkX, y, site.rowCableZ(kRackRows - 1)}, {trunkX, y, site.rowCableZ(0)}, 0.27f);
+        const float destinationX = bank < 0 ? site.inverter.x : transformerX;
+        cableRun({trunkX, y, busZ}, {destinationX, y, busZ}, 0.27f);
     }
-    cableRun({trunkX, groundY, site.rowCableZ(0)}, {trunkX, groundY, busZ}, 0.30f);
-
-    // The inverter yard is the tie-in between PV and turbine-generator output.
+    cableRun({site.inverter.x, y, busZ}, {transformerX, y, busZ}, 0.30f);
     const auto turbineCabinet = steam::switchgearPosition(plot);
-    const float deckEdge = steam::visitorEdgeX(plot);
-    const float deckY = turbineCabinet.y + 0.018f;
-    cableRun({turbineCabinet.x, deckY, turbineCabinet.z}, {turbineCabinet.x, deckY, busZ}, 0.27f);
-    cableRun({turbineCabinet.x, deckY, busZ}, {deckEdge, deckY, busZ}, 0.27f);
-    box(kConduit, {deckEdge, (deckY + groundY) * 0.5f, busZ}, {0.27f, deckY - groundY, 0.27f});
-    cableRun({deckEdge, groundY, busZ}, {site.inverter.x, groundY, busZ}, 0.32f);
-    const float inverterRear = site.inverter.z - 5.86f;
-    cableRun({site.inverter.x, groundY, busZ}, {site.inverter.x, groundY, inverterRear}, 0.32f);
-    box(kConduit, {site.inverter.x, 0.43f, inverterRear}, {0.32f, 0.86f, 0.31f});
-    box(kSteel, {site.inverter.x, 0.91f, inverterRear}, {0.80f, 0.46f, 0.35f});
+    const float rearTie = site.transformer.z - 5.1f;
+    cableRun({turbineCabinet.x, y, turbineCabinet.z}, {turbineCabinet.x, y, rearTie}, 0.25f);
+    cableRun({turbineCabinet.x, y, rearTie}, {transformerX, y, rearTie}, 0.25f);
+    cableRun({transformerX, y, rearTie}, {transformerX, y, busZ}, 0.28f);
 }
 
 void powerBulb(glm::vec3 base, float size, bool powered) {
@@ -541,13 +671,13 @@ void powerBulb(glm::vec3 base, float size, bool powered) {
     move(base);
     glScalef(size, size, size);
     color(kInk);
-    shapes::cylinder(0.27f, 0.17f, 12);
+    shapes::cylinder(0.27f, 0.17f, 8);
     move({0.0f, 0.37f, 0.0f});
     const GLfloat glow[] = {0.24f, 0.83f, 0.38f, 1.0f};
     const GLfloat dark[] = {0.0f, 0.0f, 0.0f, 1.0f};
     glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, powered ? glow : dark);
     color(powered ? Color{0.55f, 0.91f, 0.64f} : Color{0.12f, 0.22f, 0.17f});
-    shapes::sphere(0.26f, 12, 8);
+    shapes::sphere(0.26f, 8, 5);
     glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, dark);
     glPopMatrix();
 }
@@ -556,25 +686,28 @@ void drawPowerIndicators(const Site& site, const PlotInfo& plot, const citylab::
     // The clock has civil twilight. A positive solar elevation is needed for generation.
     const bool powered = frame.sunDirection.y > 0.0f && frame.daylight > 0.0f;
     glPushAttrib(GL_LIGHTING_BIT | GL_CURRENT_BIT);
-    for (int i = 0; i <= kRackRows; ++i) {
-        const float cabinetHeight = i % 2 == 0 ? 1.815f : 1.815f * 1.1f;
-        powerBulb(site.fieldCabinet(i) + glm::vec3(0.0f, cabinetHeight, 0.0f), 0.8f, powered);
+    for (int bank : {-1, 1}) {
+        for (int row = 0; row < kRackRows; ++row) {
+            const float height = row % 2 == 0 ? 0.75f : 0.82f;
+            powerBulb(site.fieldCabinet(bank, row) + glm::vec3(0.0f, 1.815f * height, 0.0f), 0.66f, powered);
+        }
     }
-    powerBulb(steam::switchgearPosition(plot) + glm::vec3(0.0f, 2.14f, 0.0f), 1.05f, powered);
-    powerBulb(site.inverter + glm::vec3(0.0f, 3.36f, 5.90f), 1.10f, powered);
-    for (float x : {-5.8f, 5.8f}) {
-        powerBulb(site.canopy + glm::vec3(x, 0.30f, 2.3f), 1.20f, powered);
-    }
+    powerBulb(steam::switchgearPosition(plot) + glm::vec3(0.0f, 1.05f, 0.0f), 0.62f, powered);
+    powerBulb(site.transformer + glm::vec3(3.9f, 3.0f, 0.0f), 0.80f, powered);
     glPopAttrib();
 }
 
 void drawSite(const Site& site, const PlotInfo& plot) {
-    drawGrounds(site, plot);
+    drawGrounds(site);
     drawControlBuilding(site.control);
     drawInverterHall(site.inverter);
     drawWorkshop(site.workshop);
     drawSolarField(site);
+    drawTransformerPad(site.transformer);
     drawEntryCanopy(site.canopy);
+    drawVisitorFurniture(site);
+    drawSecurity(site);
+    drawWayfinding(site);
     steam::draw(plot);
     drawPowerLinks(site, plot);
 }
@@ -586,29 +719,27 @@ void solid(Context& ctx, glm::vec3 base, float width, float height, float depth)
 
 void registerColliders(Context& ctx, const Site& site) {
     solid(ctx, site.control, 17.8f, 8.3f, 13.2f);
-    solid(ctx, site.inverter, 17.5f, 5.0f, 11.4f);
+    solid(ctx, site.inverter, 9.8f, 4.3f, 8.32f);
+    solid(ctx, site.transformer, 10.2f, 4.1f, 7.8f);
+    solid(ctx, site.booth(), 2.9f, 2.7f, 2.9f);
+    solid(ctx, {-4.05f, 0.0f, site.halfDepth - 3.2f}, 0.57f, 1.04f, 0.66f);
     solid(ctx, site.workshop, 19.0f, 4.7f, 13.0f);
     for (int side : {-1, 1}) {
         for (float z : {-2.3f, 2.3f}) {
             solid(ctx, site.canopy + glm::vec3(5.8f * side, 0.0f, z), 0.4f, kPostHeight, 0.4f);
         }
     }
-    for (int row = 0; row < kRackRows; ++row) {
-        for (int column = 0; column < kRackColumns; ++column) {
-            glm::vec3 panel = site.panel(column, row);
-            panel.y = 0.0f;
-            solid(ctx, panel, 4.55f, 2.9f, 2.75f);
+    for (int bank : {-1, 1}) {
+        for (int row = 0; row < kRackRows; ++row) {
+            for (int column = 0; column < kRackColumns; ++column) {
+                glm::vec3 panel = site.panel(bank, column, row);
+                panel.y = 0.0f;
+                solid(ctx, panel, 4.42f, 2.9f, 2.93f);
+            }
+            solid(ctx, site.fieldCabinet(bank, row), 0.66f, 1.82f, 1.22f);
         }
     }
-    for (int i = 0; i <= kRackRows; ++i) {
-        solid(ctx, site.fieldCabinet(i), 0.99f, 2.1f, 1.65f);
-    }
-    for (int row = 0; row < 3; ++row) {
-        for (int column = 0; column < 2; ++column) {
-            solid(ctx, {-site.halfWidth * (0.24f + 0.16f * column), 0.0f, -10.5f + 7.4f * row},
-                  4.3f, 2.9f, 2.9f);
-        }
-    }
+
 }
 
 }  // namespace

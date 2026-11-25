@@ -20,6 +20,7 @@ constexpr vec3 kOrange{0.85f, 0.33f, 0.12f};
 constexpr vec3 kYellow{0.96f, 0.69f, 0.20f};
 constexpr vec3 kBlue{0.12f, 0.40f, 0.56f};
 
+constexpr float kYardScale = 0.49f;
 constexpr float kDeckHeight = 0.12f;
 constexpr float kDeckWidth = 14.0f;
 constexpr float kTowerSpan = 4.4f;
@@ -36,12 +37,13 @@ constexpr vec3 kCabinetPosition{-5.2f, 0.0f, 1.5f};
 constexpr vec3 kCabinetFootprint{2.2f, 2.15f, 1.0f};
 
 struct YardLayout {
-    explicit YardLayout(const PlotInfo& plot)
-        : tower{-plot.width * 0.32f, kDeckHeight, -plot.depth * 0.13f},
-          generator{tower.x, kDeckHeight, plot.depth * 0.05f} {}
+    explicit YardLayout(const PlotInfo& plot) : origin{0.0f, 0.0f, -plot.depth * 0.205f} {}
 
-    vec3 tower;
-    vec3 generator;
+    vec3 world(vec3 local) const { return origin + kYardScale * local; }
+
+    vec3 origin;
+    vec3 tower{0.0f, kDeckHeight, -9.0f};
+    vec3 generator{0.0f, kDeckHeight, 9.0f};
 };
 
 void box(vec3 center, vec3 size, vec3 color) {
@@ -53,7 +55,7 @@ void box(vec3 center, vec3 size, vec3 color) {
     glPopMatrix();
 }
 
-void pipe(vec3 from, vec3 to, float radius, vec3 color, int slices = 16) {
+void pipe(vec3 from, vec3 to, float radius, vec3 color, int slices = 12) {
     const vec3 direction = to - from;
     const float length = glm::length(direction);
     const vec3 axis = glm::cross(vec3(0.0f, 1.0f, 0.0f), direction);
@@ -296,7 +298,7 @@ void drawSteamLine(const YardLayout& yard) {
         glPushMatrix();
         glTranslatef(elbow.x, elbow.y, elbow.z);
         glColor3fv(glm::value_ptr(kSilver));
-        shapes::sphere(radius, 16, 8);
+        shapes::sphere(radius, 10, 5);
         glPopMatrix();
     }
     for (int support = 1; support <= 3; ++support) {
@@ -307,22 +309,26 @@ void drawSteamLine(const YardLayout& yard) {
     }
 }
 
-void addFootprint(Context& ctx, vec3 origin, vec3 size, float height, float frontExtra = 0.0f) {
-    ctx.addCollider(origin + vec3(-size.x * 0.5f, 0.0f, -size.z * 0.5f),
-                    origin + vec3(size.x * 0.5f, height, size.z * 0.5f + frontExtra));
+void addFootprint(Context& ctx, const YardLayout& yard, vec3 origin, vec3 size, float height,
+                  float frontExtra = 0.0f) {
+    ctx.addCollider(yard.world(origin + vec3(-size.x * 0.5f, 0.0f, -size.z * 0.5f)),
+                    yard.world(origin + vec3(size.x * 0.5f, height, size.z * 0.5f + frontExtra)));
 }
 
 }  // namespace
 
 void draw(const PlotInfo& plot) {
     const YardLayout yard(plot);
+    glPushMatrix();
+    glTranslatef(yard.origin.x, yard.origin.y, yard.origin.z);
+    glScalef(kYardScale, kYardScale, kYardScale);
     const float length = yard.generator.z - yard.tower.z + 14.0f;
     const float center = (yard.generator.z + yard.tower.z) * 0.5f;
     box({yard.tower.x, kDeckHeight * 0.5f, center}, {kDeckWidth, kDeckHeight, length}, kConcrete);
 
     for (int segment = -4; segment <= 4; ++segment) {
         const float z = center + segment * (length / 10.0f);
-        box({visitorEdgeX(plot) - 0.45f, kDeckHeight + 0.006f, z},
+        box({kDeckWidth * 0.5f - 0.45f, kDeckHeight + 0.006f, z},
             {0.12f, 0.012f, 2.1f}, kYellow);
     }
 
@@ -335,28 +341,26 @@ void draw(const PlotInfo& plot) {
     drawTurbineGenerator();
     glPopMatrix();
     drawSteamLine(yard);
-}
-
-float visitorEdgeX(const PlotInfo& plot) {
-    return YardLayout(plot).tower.x + kDeckWidth * 0.5f;
+    glPopMatrix();
 }
 
 glm::vec3 switchgearPosition(const PlotInfo& plot) {
-    return YardLayout(plot).generator + kCabinetPosition;
+    const YardLayout yard(plot);
+    return yard.world(yard.generator + kCabinetPosition);
 }
 
 void addColliders(Context& ctx) {
     const YardLayout yard(ctx.plot());
-    addFootprint(ctx, yard.tower, kTowerFootprint, 3.0f);
-    addFootprint(ctx, yard.generator, kGeneratorFootprint, 3.7f);
-    addFootprint(ctx, yard.generator + kCabinetPosition, kCabinetFootprint, 2.15f, 0.55f);
+    addFootprint(ctx, yard, yard.tower, kTowerFootprint, 3.0f);
+    addFootprint(ctx, yard, yard.generator, kGeneratorFootprint, 3.7f);
+    addFootprint(ctx, yard, yard.generator + kCabinetPosition, kCabinetFootprint, 2.15f, 0.55f);
     const float pipeX = yard.tower.x + kPipeOffset;
     const float end = yard.generator.z + kInletZ;
-    ctx.addCollider({pipeX - 0.29f, yard.tower.y, yard.tower.z - 0.29f},
-                    {pipeX + 0.29f, yard.tower.y + kReceiverY, yard.tower.z + 0.29f});
+    ctx.addCollider(yard.world({pipeX - 0.29f, yard.tower.y, yard.tower.z - 0.29f}),
+                    yard.world({pipeX + 0.29f, yard.tower.y + kReceiverY, yard.tower.z + 0.29f}));
     for (int support = 1; support <= 3; ++support) {
         const float z = glm::mix(yard.tower.z, end, support * 0.25f);
-        addFootprint(ctx, {pipeX, yard.tower.y, z}, {0.82f, 0.20f, 0.82f}, kInletY);
+        addFootprint(ctx, yard, {pipeX, yard.tower.y, z}, {0.82f, 0.20f, 0.82f}, kInletY);
     }
 }
 
