@@ -17,6 +17,12 @@ From the Tram Boulevard gate, the visitor path runs past a security booth and un
 
 The street-facing gate is on the local +z edge. The city supplies the sign and street. A perimeter footpath connects both front building entrances and joins the central path and the crosswalk along the PV fields. The barrier arm is parked upright so people can enter.
 
+## Battery storage
+
+Three battery cabinets sit in front of the transformer pad. The charge meter and source lever are just to the right of the central path as you walk from the gate. Press **B** while visiting EN-1 to throw the lever between **Direct** and **Battery**. Direct mode powers the lamps from the panels and stores surplus while the sun is up. Battery mode draws down the meter and keeps the canopy lights and equipment indicators on after sunset until the bank is empty.
+
+The bank starts half charged. At peak sunlight, an empty bank fills in about two minutes in Direct mode. A full bank can power the lamps for four minutes. Press **F8** to reset the bank and lever. For a night demo, launch with `python3 tools/citylab.py run team25 -- --time 21:00` and press **B** once.
+
 ## Minimum requirements
 
 All implementation references below are in [src/MyZone.cpp](src/MyZone.cpp).
