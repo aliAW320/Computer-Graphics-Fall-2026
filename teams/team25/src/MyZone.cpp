@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string_view>
 
+#include "BatteryStorage.h"
 #include "SteamEquipment.h"
 
 namespace team25 {
@@ -52,6 +53,7 @@ constexpr int kRackColumns = 5;
 constexpr float kPostHeight = 5.1f;
 constexpr float kFrontPathWidth = 5.0f;
 constexpr float kDirectLeverAngle = 34.0f;
+constexpr float kBatteryLeverAngle = -34.0f;
 constexpr std::array<float, 3> kBatteryOffsets{{-2.05f, 0.0f, 2.05f}};
 constexpr int kChargeSegments = 5;
 
@@ -703,51 +705,77 @@ void drawBatteryStorage(const Site& site) {
     box(kSteel, lever + glm::vec3(0.0f, 0.12f, 0.0f), {1.48f, 0.24f, 0.85f});
     box(kTeal, lever + glm::vec3(0.0f, 1.02f, 0.0f), {1.28f, 1.80f, 0.52f});
     box(kInk, lever + glm::vec3(0.0f, 1.40f, 0.28f), {1.13f, 0.68f, 0.10f});
-    placard(lever + glm::vec3(0.0f, 2.02f, 0.31f), "POWER SOURCE", 0.026f);
+    placard(lever + glm::vec3(0.0f, 2.02f, 0.31f), "PRESS B", 0.046f);
     placard(lever + glm::vec3(-0.34f, 1.67f, 0.36f), "DIRECT", 0.023f);
     placard(lever + glm::vec3(0.34f, 1.67f, 0.36f), "BATTERY", 0.023f);
     placard(lever + glm::vec3(0.0f, 0.76f, 0.29f), "CHARGE", 0.028f);
+    box(kSteel, lever + glm::vec3(0.0f, 1.20f, 0.40f), {0.15f, 0.14f, 0.12f});
+}
+
+void drawStorageControls(glm::vec3 lever, float leverAngle, float charge) {
     glPushMatrix();
     move(lever + glm::vec3(0.0f, 1.20f, 0.39f));
-    glRotatef(kDirectLeverAngle, 0.0f, 0.0f, 1.0f);
+    glRotatef(leverAngle, 0.0f, 0.0f, 1.0f);
     box(kIvory, {0.0f, 0.15f, 0.0f}, {0.07f, 0.34f, 0.10f});
     box(kAmber, {0.0f, 0.34f, 0.0f}, {0.20f, 0.14f, 0.17f});
     glPopMatrix();
-    box(kSteel, lever + glm::vec3(0.0f, 1.20f, 0.40f), {0.15f, 0.14f, 0.12f});
-
+    constexpr GLfloat lit[]{0.14f, 0.44f, 0.27f, 1.0f};
+    constexpr GLfloat dark[]{0.0f, 0.0f, 0.0f, 1.0f};
     for (int segment = 0; segment < kChargeSegments; ++segment) {
-        box(kInk, lever + glm::vec3((segment - 2) * 0.178f, 0.98f, 0.28f),
+        const bool charged = charge * kChargeSegments > segment;
+        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, charged ? lit : dark);
+        box(charged ? kTeal : kInk, lever + glm::vec3((segment - 2) * 0.178f, 0.98f, 0.28f),
             {0.138f, 0.13f, 0.08f});
     }
+    glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, dark);
 }
 
-void powerBulb(glm::vec3 base, float size) {
+float solarOutput(const citylab::Frame& frame) {
+    // Ambient twilight can persist after the sun has set.
+    return frame.sunDirection.y > 0.0f ? frame.daylight : 0.0f;
+}
+
+void powerBulb(glm::vec3 base, float size, bool powered) {
     glPushMatrix();
     move(base);
     glScalef(size, size, size);
     color(kInk);
     shapes::cylinder(0.27f, 0.17f, 8);
     move({0.0f, 0.37f, 0.0f});
-    color({0.34f, 0.63f, 0.49f});
+    constexpr GLfloat glow[]{0.24f, 0.83f, 0.38f, 1.0f};
+    constexpr GLfloat dark[]{0.0f, 0.0f, 0.0f, 1.0f};
+    glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, powered ? glow : dark);
+    color(powered ? Color{0.55f, 0.91f, 0.64f} : Color{0.12f, 0.22f, 0.17f});
     shapes::sphere(0.26f, 8, 5);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, dark);
     glPopMatrix();
 }
 
-void drawPowerFixtures(const Site& site, const PlotInfo& plot) {
+void drawPowerFixtures(const Site& site, const PlotInfo& plot, bool powered) {
     for (int bank : {-1, 1}) {
         for (int row = 0; row < kRackRows; ++row) {
             const float height = row % 2 == 0 ? 0.75f : 0.82f;
-            powerBulb(site.fieldCabinet(bank, row) + glm::vec3(0.0f, 1.815f * height, 0.0f), 0.66f);
+            powerBulb(site.fieldCabinet(bank, row) + glm::vec3(0.0f, 1.815f * height, 0.0f), 0.66f, powered);
         }
     }
-    powerBulb(steam::switchgearPosition(plot) + glm::vec3(0.0f, 1.05f, 0.0f), 0.62f);
-    powerBulb(site.transformer + glm::vec3(3.9f, 3.0f, 0.0f), 0.80f);
-    for (float side : {-1.0f, 1.0f}) {
+    powerBulb(steam::switchgearPosition(plot) + glm::vec3(0.0f, 1.05f, 0.0f), 0.62f, powered);
+    powerBulb(site.transformer + glm::vec3(3.9f, 3.0f, 0.0f), 0.80f, powered);
+    for (int fixture = 0; fixture < 2; ++fixture) {
+        const auto lamp = site.canopy + glm::vec3(fixture == 0 ? -2.5f : 2.5f, 4.89f, 2.46f);
+        if (powered) {
+            const GLenum light = GL_LIGHT1 + fixture;
+            const GLfloat position[]{lamp.x, lamp.y - 0.42f, lamp.z, 1.0f};
+            constexpr GLfloat diffuse[]{0.98f, 0.85f, 0.64f, 1.0f};
+            glLightfv(light, GL_POSITION, position);
+            glLightfv(light, GL_DIFFUSE, diffuse);
+            glLightf(light, GL_QUADRATIC_ATTENUATION, 0.08f);
+            glEnable(light);
+        }
         // Hang the sockets below the entry beam.
         glPushMatrix();
-        move(site.canopy + glm::vec3(side * 2.5f, 4.89f, 2.46f));
+        move(lamp);
         glRotatef(180.0f, 1.0f, 0.0f, 0.0f);
-        powerBulb({}, 1.15f);
+        powerBulb({}, 1.15f, powered);
         glPopMatrix();
     }
 }
@@ -766,7 +794,6 @@ void drawSite(const Site& site, const PlotInfo& plot) {
     steam::draw(plot);
     drawPowerLinks(site, plot);
     drawBatteryStorage(site);
-    drawPowerFixtures(site, plot);
 }
 
 void solid(Context& ctx, glm::vec3 base, float width, float height, float depth) {
@@ -809,21 +836,51 @@ class SolarPlantZone : public Zone {
 public:
     void init(Context& ctx) override {
         const Site site(ctx.plot());
+        leverPosition_ = site.powerLever();
         registerColliders(ctx, site);
         steam::addColliders(ctx);
-        scenery_ = glGenLists(1);
-        if (scenery_ == 0) throw std::runtime_error("Could not allocate the Team 25 scenery display list");
+        scenery_ = glGenLists(3);
+        if (scenery_ == 0) throw std::runtime_error("Could not allocate the Team 25 display lists");
         glNewList(scenery_, GL_COMPILE);
         drawSite(site, ctx.plot());
         glEndList();
+        glNewList(scenery_ + kLitFixtures, GL_COMPILE);
+        drawPowerFixtures(site, ctx.plot(), true);
+        glEndList();
+        glNewList(scenery_ + kUnlitFixtures, GL_COMPILE);
+        drawPowerFixtures(site, ctx.plot(), false);
+        glEndList();
     }
 
-    void draw(const Context&) const override {
+    void update(const citylab::Frame& frame) override {
+        storage_.update(frame.dt, solarOutput(frame));
+        const float target = storage_.usingBattery() ? kBatteryLeverAngle : kDirectLeverAngle;
+        leverAngle_ = glm::mix(leverAngle_, target, -std::expm1(-9.0f * frame.dt));
+    }
+
+    void onKey(int key) override {
+        if (key == 'b') storage_.toggleSource();
+    }
+
+    void reset() override {
+        storage_ = BatteryStorage{};
+        leverAngle_ = kDirectLeverAngle;
+    }
+
+    void draw(const Context& ctx) const override {
+        const bool powered = storage_.lightsPowered(solarOutput(ctx.frame()));
+        glCallList(scenery_ + (powered ? kLitFixtures : kUnlitFixtures));
         glCallList(scenery_);
+        drawStorageControls(leverPosition_, leverAngle_, storage_.charge());
     }
 
 private:
+    static constexpr GLuint kLitFixtures = 1;
+    static constexpr GLuint kUnlitFixtures = 2;
     GLuint scenery_ = 0;
+    glm::vec3 leverPosition_{0.0f};
+    BatteryStorage storage_;
+    float leverAngle_ = kDirectLeverAngle;
 };
 
 }  // namespace team25
